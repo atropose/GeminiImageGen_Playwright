@@ -1,6 +1,9 @@
 'use strict';
 
 const { chromium } = require('playwright');
+const { spawn } = require('child_process');
+const http = require('http');
+const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { downloadImage } = require('./downloader');
@@ -70,6 +73,7 @@ const SEND_BUTTON_SELECTORS = [
 let _browser = null;        // cloud mode: Browser instance
 let browserContext = null;  // both modes: BrowserContext
 let activePage = null;
+let _chromeProcess = null;  // Chrome process spawned by us (local mode)
 
 function log(msg) {
   console.log(`[${new Date().toISOString()}] [playwright] ${msg}`);
@@ -133,6 +137,82 @@ async function launchCloudContext() {
   return browserContext;
 }
 
+// ── Local Mode helpers ────────────────────────────────────────────────────────
+
+function findChromeExe() {
+  if (process.env.CHROME_EXE) return process.env.CHROME_EXE;
+
+  if (process.platform === 'win32') {
+    const candidates = [
+      path.join('C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'),
+      path.join('C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe'),
+      path.join(process.env.LOCALAPPDATA || '', 'Google', 'Chrome', 'Application', 'chrome.exe'),
+    ];
+    return candidates.find(p => fs.existsSync(p)) || null;
+  }
+
+  if (process.platform === 'darwin') {
+    const p = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+    return fs.existsSync(p) ? p : null;
+  }
+
+  // Linux — try common paths
+  const linuxPaths = [
+    '/usr/bin/google-chrome',
+    '/usr/bin/google-chrome-stable',
+    '/usr/bin/chromium-browser',
+    '/usr/bin/chromium',
+  ];
+  return linuxPaths.find(p => fs.existsSync(p)) || null;
+}
+
+function waitForCDPReady(url, timeoutMs = 15_000) {
+  return new Promise((resolve, reject) => {
+    const deadline = Date.now() + timeoutMs;
+    function attempt() {
+      http.get(`${url}/json/version`, res => {
+        res.resume(); // drain response body
+        resolve();
+      }).on('error', () => {
+        if (Date.now() >= deadline) {
+          reject(new Error(`Chrome did not respond on ${url} within ${timeoutMs} ms`));
+        } else {
+          setTimeout(attempt, 500);
+        }
+      });
+    }
+    attempt();
+  });
+}
+
+async function spawnChromeWithDebugPort() {
+  const exe = findChromeExe();
+  if (!exe) {
+    throw new Error(
+      'Google Chrome not found. Install Chrome or set the CHROME_EXE environment\n' +
+      'variable to the full path of chrome.exe / Google Chrome.'
+    );
+  }
+
+  const cdpUrl = 'http://localhost:9222';
+  log(`Spawning Chrome: "${exe}" --remote-debugging-port=9222`);
+  _chromeProcess = spawn(exe, [
+    '--remote-debugging-port=9222',
+    `--user-data-dir=${CHROME_USER_DATA_DIR}`,
+    '--no-first-run',
+    '--no-default-browser-check',
+  ], { detached: false, stdio: 'ignore' });
+
+  _chromeProcess.on('exit', code => {
+    log(`Chrome process exited (code ${code})`);
+    _chromeProcess = null;
+  });
+
+  await waitForCDPReady(cdpUrl, 15_000);
+  log('Chrome ready on port 9222');
+  return cdpUrl;
+}
+
 // ── Local Mode via CDP: attach to already-running Chrome ─────────────────────
 // Requires Chrome launched with: --remote-debugging-port=9222
 // Set env var: CHROME_CDP_URL=http://localhost:9222
@@ -157,84 +237,26 @@ async function launchViaCDP(cdpUrl) {
   return browserContext;
 }
 
-// ── Local Mode: persistent Chrome profile (existing login) ────────────────────
-
-const CDP_SETUP_INSTRUCTIONS =
-  'One-time setup — close Chrome, then re-launch it with the debug flag:\n\n' +
-  '  Windows : "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe" --remote-debugging-port=9222\n' +
-  '  Mac     : /Applications/Google\\ Chrome.app/Contents/MacOS/Google\\ Chrome --remote-debugging-port=9222\n' +
-  '  Linux   : google-chrome --remote-debugging-port=9222\n\n' +
-  'Then restart this app. It will auto-connect to the running Chrome.\n' +
-  '(Tip: create a desktop shortcut or .bat file with that command.)';
+// ── Local Mode: spawn Chrome + connect via CDP ────────────────────────────────
 
 async function launchLocalContext() {
-  // If CHROME_CDP_URL is explicitly set, use CDP without attempting launchPersistentContext.
-  const cdpUrl = process.env.CHROME_CDP_URL;
-  if (cdpUrl) {
-    return launchViaCDP(cdpUrl);
+  // Explicit CDP URL override
+  if (process.env.CHROME_CDP_URL) {
+    return launchViaCDP(process.env.CHROME_CDP_URL);
   }
 
-  // Auto-detect: try CDP on the default debug port first.
-  // Works if Chrome was launched with --remote-debugging-port=9222.
+  // Auto-detect: connect to already-running Chrome on port 9222
   try {
-    const context = await launchViaCDP('http://localhost:9222');
-    log('Auto-connected to Chrome via CDP on port 9222');
-    return context;
+    const ctx = await launchViaCDP('http://localhost:9222');
+    log('Auto-connected to Chrome on port 9222');
+    return ctx;
   } catch (_) {
-    log('CDP auto-detect failed (Chrome not on port 9222), trying launchPersistentContext...');
+    log('Chrome not detected on port 9222, spawning Chrome...');
   }
 
-  // Fallback: launch Chrome directly (requires Chrome to be fully closed).
-  log(`Launching persistent Chrome context: ${CHROME_USER_DATA_DIR}`);
-  try {
-    browserContext = await chromium.launchPersistentContext(CHROME_USER_DATA_DIR, {
-      channel: 'chrome',
-      headless: false,
-      viewport: null,
-      args: [
-        '--no-first-run',
-        '--no-default-browser-check',
-      ],
-      ignoreDefaultArgs: ['--enable-automation', '--no-sandbox', '--disable-blink-features=AutomationControlled'],
-    });
-  } catch (err) {
-    const isDefaultDirBlocked =
-      err.message.includes('non-default data directory') ||
-      err.message.includes('Timeout');
-
-    const isProfileLocked =
-      err.message.includes('Target page, context or browser has been closed') ||
-      err.message.includes('already in use') ||
-      err.message.includes('user data directory is already in use');
-
-    if (isDefaultDirBlocked) {
-      // Chrome's default User Data Dir blocks --remote-debugging-pipe.
-      // The only fix is to use --remote-debugging-port (CDP) instead.
-      throw new Error(
-        'Chrome blocked the connection because the default profile directory\n' +
-        'cannot be used with Playwright\'s launch method.\n\n' +
-        CDP_SETUP_INSTRUCTIONS
-      );
-    }
-
-    if (isProfileLocked) {
-      throw new Error(
-        'Chrome is already running. Close all Chrome windows and retry,\n' +
-        'or use the CDP approach below:\n\n' +
-        CDP_SETUP_INSTRUCTIONS
-      );
-    }
-
-    throw err;
-  }
-
-  browserContext.on('close', () => {
-    log('Browser context closed');
-    browserContext = null;
-    activePage = null;
-  });
-
-  return browserContext;
+  // Spawn Chrome ourselves with --remote-debugging-port (no launchPersistentContext)
+  const cdpUrl = await spawnChromeWithDebugPort();
+  return launchViaCDP(cdpUrl);
 }
 
 // ── Unified getter ────────────────────────────────────────────────────────────
@@ -446,6 +468,10 @@ async function closeBrowser() {
   if (_browser) {
     try { await _browser.close(); } catch (_) {}
     _browser = null;
+  }
+  if (_chromeProcess) {
+    try { _chromeProcess.kill(); } catch (_) {}
+    _chromeProcess = null;
   }
   activePage = null;
 }
