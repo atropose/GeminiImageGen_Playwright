@@ -4,7 +4,9 @@
   "description": "Automates Gemini image generation using Playwright with your existing Chrome session",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "build": "npx playwright install chromium --with-deps",
+    "export-cookies": "node scripts/export-cookies.js"
   },
   "engines": {
     "node": ">=18.0.0"

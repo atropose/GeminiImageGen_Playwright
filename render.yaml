@@ -1,0 +1,31 @@
+services:
+  - type: web
+    name: gemini-image-bot
+    env: node
+    # Standard plan recommended: Playwright needs ~1GB RAM
+    # Starter (512MB) may work but can be unstable
+    plan: standard
+    buildCommand: npm install && npm run build
+    startCommand: node server.js
+    healthCheckPath: /health
+
+    envVars:
+      - key: NODE_ENV
+        value: production
+
+      # ── Required: Google session cookies ─────────────────────────────────────
+      # Run "npm run export-cookies" locally, copy the JSON output,
+      # then paste it as the value of this variable in the Render dashboard.
+      - key: GOOGLE_COOKIES
+        sync: false   # Must be set manually in Render dashboard
+
+      # ── Optional overrides ────────────────────────────────────────────────────
+      # Directory where generated images are saved on the server.
+      # Defaults to /tmp/gemini-downloads (ephemeral — cleared on restart).
+      # Attach a Render Disk at /var/data for persistence.
+      - key: DOWNLOAD_DIR
+        value: /tmp/gemini-downloads
+
+      # Port is automatically set by Render — do not change.
+      - key: PORT
+        value: 10000
