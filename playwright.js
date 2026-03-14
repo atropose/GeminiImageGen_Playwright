@@ -159,14 +159,32 @@ async function launchViaCDP(cdpUrl) {
 
 // ── Local Mode: persistent Chrome profile (existing login) ────────────────────
 
+const CDP_SETUP_INSTRUCTIONS =
+  'One-time setup — close Chrome, then re-launch it with the debug flag:\n\n' +
+  '  Windows : "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe" --remote-debugging-port=9222\n' +
+  '  Mac     : /Applications/Google\\ Chrome.app/Contents/MacOS/Google\\ Chrome --remote-debugging-port=9222\n' +
+  '  Linux   : google-chrome --remote-debugging-port=9222\n\n' +
+  'Then restart this app. It will auto-connect to the running Chrome.\n' +
+  '(Tip: create a desktop shortcut or .bat file with that command.)';
+
 async function launchLocalContext() {
-  // If Chrome is already running, connect via CDP instead of launching a new instance.
-  // To use this mode, start Chrome with: --remote-debugging-port=9222
+  // If CHROME_CDP_URL is explicitly set, use CDP without attempting launchPersistentContext.
   const cdpUrl = process.env.CHROME_CDP_URL;
   if (cdpUrl) {
     return launchViaCDP(cdpUrl);
   }
 
+  // Auto-detect: try CDP on the default debug port first.
+  // Works if Chrome was launched with --remote-debugging-port=9222.
+  try {
+    const context = await launchViaCDP('http://localhost:9222');
+    log('Auto-connected to Chrome via CDP on port 9222');
+    return context;
+  } catch (_) {
+    log('CDP auto-detect failed (Chrome not on port 9222), trying launchPersistentContext...');
+  }
+
+  // Fallback: launch Chrome directly (requires Chrome to be fully closed).
   log(`Launching persistent Chrome context: ${CHROME_USER_DATA_DIR}`);
   try {
     browserContext = await chromium.launchPersistentContext(CHROME_USER_DATA_DIR, {
@@ -180,26 +198,33 @@ async function launchLocalContext() {
       ignoreDefaultArgs: ['--enable-automation', '--no-sandbox', '--disable-blink-features=AutomationControlled'],
     });
   } catch (err) {
-    // Chrome is already running with this profile — the profile directory is locked.
+    const isDefaultDirBlocked =
+      err.message.includes('non-default data directory') ||
+      err.message.includes('Timeout');
+
     const isProfileLocked =
       err.message.includes('Target page, context or browser has been closed') ||
       err.message.includes('already in use') ||
       err.message.includes('user data directory is already in use');
 
-    if (isProfileLocked) {
+    if (isDefaultDirBlocked) {
+      // Chrome's default User Data Dir blocks --remote-debugging-pipe.
+      // The only fix is to use --remote-debugging-port (CDP) instead.
       throw new Error(
-        'Chrome is already running and the profile is locked.\n\n' +
-        'Choose one of these solutions:\n\n' +
-        '  [Option 1] Close Chrome completely, then retry.\n\n' +
-        '  [Option 2] Connect to the running Chrome via CDP:\n' +
-        '    1. Close Chrome\n' +
-        '    2. Re-open Chrome with the debug flag:\n' +
-        '       Windows: "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe" --remote-debugging-port=9222\n' +
-        '       Mac/Linux: google-chrome --remote-debugging-port=9222\n' +
-        '    3. Set env var: CHROME_CDP_URL=http://localhost:9222\n' +
-        '    4. Restart this app'
+        'Chrome blocked the connection because the default profile directory\n' +
+        'cannot be used with Playwright\'s launch method.\n\n' +
+        CDP_SETUP_INSTRUCTIONS
       );
     }
+
+    if (isProfileLocked) {
+      throw new Error(
+        'Chrome is already running. Close all Chrome windows and retry,\n' +
+        'or use the CDP approach below:\n\n' +
+        CDP_SETUP_INSTRUCTIONS
+      );
+    }
+
     throw err;
   }
 
