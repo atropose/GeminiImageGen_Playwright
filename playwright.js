@@ -450,7 +450,7 @@ async function generateImage(prompt, downloadDir, progress) {
     log(`Image detected: ${imageSrc.substring(0, 80)}...`);
 
     progress('Image detected! Downloading...');
-    const filePath = await downloadImage(imageSrc, downloadDir, prompt, page, browserContext);
+    const filePath = await downloadImage(imageSrc, downloadDir, prompt, page, context);
 
     progress(`Download complete: ${filePath}`);
     return filePath;
