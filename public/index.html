@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gemini Image Bot</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>
+        <span class="gem-icon">✦</span>
+        Gemini Image Bot
+      </h1>
+      <p class="subtitle">Automate image generation using your existing Chrome session</p>
+    </header>
+
+    <main>
+      <form id="generateForm">
+        <div class="field">
+          <label for="prompt">Image Prompt</label>
+          <textarea
+            id="prompt"
+            name="prompt"
+            rows="4"
+            placeholder="Describe the image you want to generate…&#10;e.g. &quot;A photorealistic astronaut cat floating in space, cinematic lighting&quot;"
+            required
+          ></textarea>
+        </div>
+
+        <div class="field">
+          <label for="downloadDir">Download Folder</label>
+          <input
+            id="downloadDir"
+            name="downloadDir"
+            type="text"
+            placeholder="/home/user/gemini-images"
+            required
+          />
+          <span class="hint">Folder will be created if it doesn't exist</span>
+        </div>
+
+        <div class="actions">
+          <button type="submit" id="generateBtn">
+            <span class="btn-icon">⚡</span>
+            Generate Image
+          </button>
+          <button type="button" id="clearBtn" class="secondary">Clear</button>
+        </div>
+      </form>
+
+      <section id="statusSection" class="hidden">
+        <div class="status-header">
+          <span id="statusIcon" class="spinner">◌</span>
+          <h2 id="statusTitle">Processing...</h2>
+        </div>
+        <div id="statusLog" class="status-log"></div>
+      </section>
+
+      <section id="resultSection" class="hidden">
+        <div class="result-header">
+          <span class="success-icon">✓</span>
+          <h2>Image Generated!</h2>
+        </div>
+        <p id="filePath" class="file-path"></p>
+        <div id="previewContainer" class="preview-container">
+          <img id="previewImg" src="" alt="Generated image preview" />
+        </div>
+        <div class="result-actions">
+          <button type="button" id="generateAnotherBtn">Generate Another</button>
+        </div>
+      </section>
+
+      <section id="errorSection" class="hidden">
+        <div class="error-header">
+          <span class="error-icon">✕</span>
+          <h2>Generation Failed</h2>
+        </div>
+        <p id="errorMsg" class="error-msg"></p>
+        <div class="result-actions">
+          <button type="button" id="retryBtn">Try Again</button>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <p>Uses your existing Chrome login session &mdash; no credentials stored.</p>
+    </footer>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>

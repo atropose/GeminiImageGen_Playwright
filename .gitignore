@@ -1,0 +1,10 @@
+node_modules/
+.env
+*.log
+*.png
+*.jpg
+*.jpeg
+*.webp
+downloads/
+.DS_Store
+Thumbs.db

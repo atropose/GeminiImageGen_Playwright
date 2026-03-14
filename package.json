@@ -1,0 +1,24 @@
+{
+  "name": "gemini-image-bot",
+  "version": "1.0.0",
+  "description": "Automates Gemini image generation using Playwright with your existing Chrome session",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.18.2",
+    "playwright": "^1.42.0"
+  },
+  "keywords": [
+    "gemini",
+    "playwright",
+    "image-generation",
+    "automation"
+  ],
+  "license": "MIT"
+}
