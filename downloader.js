@@ -79,6 +79,27 @@ async function downloadViaHttp(url, destPath, redirectCount = 0) {
 }
 
 /**
+ * Download any URL using the browser page's fetch() — includes session cookies.
+ * Works for authenticated Google URLs (lh3.googleusercontent.com, etc.).
+ */
+async function downloadViaBrowserFetch(url, destPath, page) {
+  log(`Downloading via browser fetch (authenticated)...`);
+
+  const base64 = await page.evaluate(async (imageUrl) => {
+    const res = await fetch(imageUrl, { credentials: 'include' });
+    if (!res.ok) throw new Error(`HTTP ${res.status} from browser fetch`);
+    const buf = await res.arrayBuffer();
+    const bytes = new Uint8Array(buf);
+    let binary = '';
+    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+    return btoa(binary);
+  }, url);
+
+  const buffer = Buffer.from(base64, 'base64');
+  fs.writeFileSync(destPath, buffer);
+}
+
+/**
  * Download a blob: URL by extracting it from the browser page as base64.
  * Requires an active Playwright page.
  */
@@ -109,6 +130,10 @@ async function downloadWithRetry(imageUrl, destPath, page) {
       if (isBlob) {
         if (!page) throw new Error('Blob URL requires an active browser page');
         await downloadViaBlob(imageUrl, destPath, page);
+      } else if (page) {
+        // Use browser-side fetch so Google session cookies are included.
+        // Falls back to plain HTTP if the browser fetch fails.
+        await downloadViaBrowserFetch(imageUrl, destPath, page);
       } else {
         await downloadViaHttp(imageUrl, destPath);
       }
