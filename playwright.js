@@ -174,11 +174,10 @@ async function launchLocalContext() {
       headless: false,
       viewport: null,
       args: [
-        '--disable-blink-features=AutomationControlled',
         '--no-first-run',
         '--no-default-browser-check',
       ],
-      ignoreDefaultArgs: ['--enable-automation', '--no-sandbox'],
+      ignoreDefaultArgs: ['--enable-automation', '--no-sandbox', '--disable-blink-features=AutomationControlled'],
     });
   } catch (err) {
     // Chrome is already running with this profile — the profile directory is locked.
