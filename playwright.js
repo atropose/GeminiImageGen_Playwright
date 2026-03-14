@@ -450,10 +450,7 @@ async function generateImage(prompt, downloadDir, progress) {
     log(`Image detected: ${imageSrc.substring(0, 80)}...`);
 
     progress('Image detected! Downloading...');
-    // Extract browser cookies so Node.js can make authenticated requests
-    // without being blocked by CORS/CSP that applies to page.evaluate().
-    const cookies = await browserContext.cookies();
-    const filePath = await downloadImage(imageSrc, downloadDir, prompt, page, cookies);
+    const filePath = await downloadImage(imageSrc, downloadDir, prompt, page, browserContext);
 
     progress(`Download complete: ${filePath}`);
     return filePath;
