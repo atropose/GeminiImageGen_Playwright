@@ -5,7 +5,7 @@ const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
-const { generateImage, IS_CLOUD } = require('./playwright');
+const { generateImage, IS_CLOUD } = require('./gemini-bot');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -217,7 +217,7 @@ app.listen(PORT, () => {
 // Graceful shutdown
 process.on('SIGTERM', async () => {
   log('SIGTERM received, shutting down...');
-  const { closeBrowser } = require('./playwright');
+  const { closeBrowser } = require('./gemini-bot');
   await closeBrowser().catch(() => {});
   process.exit(0);
 });
